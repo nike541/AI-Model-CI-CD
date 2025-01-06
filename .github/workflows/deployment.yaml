@@ -1,0 +1,33 @@
+name: Deploy Model
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+   build:
+      runs-on: ubuntu-latest
+      outputs:
+        image: ${{ steps.image-tag.outputs.image }}
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Set Up Docker Buildx
+          uses: docker/login-actions@v3
+          with:
+             registry: ghcr.io
+             username: ${{ github.actor }}
+             password: ${{ secrets.GITHUB_TOKEN }}
+        
+        - name: Generate image tag
+          id: image-tag
+          run: | 
+            echo "image=ghcr.io/${{ github.repository_owner }}/litmodel:${{ github.sha }}" >> $GITHUB_OUTPUT
+        
+        - name: Build and push
+          uses: docker/build-push-action@v5
+          with:
+            push: true
+            tags: ${{ steps.image-tag.outputs.image }}
+            
+        - name:

@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+   name: toymodel
+spec:
+   replicas: 3
+   selector:
+      matchLabels:
+         app: toymodel
+    template:
+      metadata:
+        labels:
+          app: litmodel
+      spec:
+         containers:
+         - name: litmodel
+           image: litmodel
+           ports:
+           - containerPort: 8000
+           

@@ -1,0 +1,11 @@
+apiVrersion: v1
+kind: Service
+metadata:
+   name: litmodel
+spec:
+   selector:
+      app: litmodel
+   ports:
+   - ports: 8000
+     targetPort: 8000
+     
