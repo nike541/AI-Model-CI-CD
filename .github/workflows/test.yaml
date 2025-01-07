@@ -151,7 +151,7 @@ jobs:
         if: always()
         uses: slackapi/slack-github-action@v1.23.0
         with:
-          payload: |
+          payload: |￼
             {
               "text": "${{ job.status == 'success' && '✅ Successfully deployed to production' || '❌ Production deployment failed' }}: ${{ needs.build.outputs.image }}"
             }
