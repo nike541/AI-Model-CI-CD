@@ -1,0 +1,4 @@
+litserve
+prometheus_client
+torch
+torchmetrics
