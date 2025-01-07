@@ -7,7 +7,7 @@ spec:
    selector:
       matchLabels:
          app: toymodel
-    template:
+   template:
       metadata:
         labels:
           app: toymodel
@@ -29,15 +29,15 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 15
-          periodSeconds: 20
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
           resources:
             requests:
               cpu: 500m
-               memory: 512Mi
+              memory: 512Mi
             limits:
               cpu: 2000m
               memory: 1Gi
@@ -83,4 +83,3 @@ spec:
            
            # Final promotion
            - setWeight: 100
-     

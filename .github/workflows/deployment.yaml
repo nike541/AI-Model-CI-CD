@@ -105,6 +105,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install jq and bc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq bc
+
       - name: Wait for staging validation
         run: |
           for i in {1..30}; do
