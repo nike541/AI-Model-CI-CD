@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+    name: toymodel-analysis
+spec:
+   metrics:
+   - name: error-rate
+     interval: 30s
+     count: 10
+     successCondition: result < 0.01
+     failureCondition: result >= 0.01
+     failureLimit: 3
+     provider:
+      prometheus:
+        address: http://prometheus.monitoring:9090
+        query: |
+          sum(rate(http_server_requests_total{status=~"5.*",service="{{args.service-name}}"}[1m]))
+          /
+          sum(rate(http_server_requests_total{service="{{args.service-name}}"}[1m]))
+   - name: p95-latency
+     interval: 30s
+     count: 10
+     successCondition: result < 0.2
+     failureCondition: result >= 0.2
+     failureLimit: 3
+     provider:
+       prometheus:
+         address: http://prometheus.monitoring:9090
+         query: |
+           histogram_quantile(0.95, 
+             sum(rate(http_server_request_duration_seconds_bucket{service="{{args.service-name}}"}[1m])) 
+             by (le))
+   - name: accuracy
+     interval: 30s
+     count: 10
+     successCondition: result >= 0.95
+     failureCondition: result < 0.95
+     failureLimit: 3
+     provider:
+       prometheus:
+         address: http://prometheus.monitoring:9090
+         query: |
+           min(model_prediction_accuracy{service="{{args.service-name}}"})

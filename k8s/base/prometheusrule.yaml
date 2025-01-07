@@ -1,0 +1,46 @@
+
+# k8s/base/prometheusrule.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: litmodel-alerts
+spec:
+  groups:
+  - name: litmodel
+    rules:
+    - alert: HighErrorRate
+      expr: |
+        sum(rate(http_server_requests_total{status=~"5.*",service="litmodel"}[5m]))
+        /
+        sum(rate(http_server_requests_total{service="litmodel"}[5m]))
+        > 0.01
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: High error rate detected
+        description: Error rate exceeds 1% threshold
+    
+    - alert: HighLatency
+      expr: |
+        histogram_quantile(0.95, 
+          sum(rate(http_server_request_duration_seconds_bucket{service="litmodel"}[5m])) 
+          by (le))
+        > 0.2
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: High latency detected
+        description: P95 latency exceeds 200ms threshold
+    
+    - alert: LowAccuracy
+      expr: |
+        min(model_prediction_accuracy{service="litmodel"})
+        < 0.95
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: Low model accuracy detected
+        description: Model accuracy below 95% threshold

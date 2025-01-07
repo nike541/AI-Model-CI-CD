@@ -1,11 +1,23 @@
-apiVrersion: v1
+apiVersion: v1
 kind: Service
 metadata:
-   name: litmodel
+  name: toymodel-stable
 spec:
-   selector:
-      app: litmodel
-   ports:
-   - ports: 8000
-     targetPort: 8000
-     
+  selector:
+    app: toymodel
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: toymodel-canary
+spec:
+  selector:
+    app: toymodel
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http

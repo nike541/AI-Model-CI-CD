@@ -1,0 +1,86 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+   name: toymodel
+spec:
+   replicas: 3
+   selector:
+      matchLabels:
+         app: toymodel
+    template:
+      metadata:
+        labels:
+          app: toymodel
+        annotations:
+           prometheus.io/scrape: "true"
+           prometheus.io/port: "8000"
+           prometheus.io/path: "/metrics"
+      spec:
+        containers:
+        - name: toymodel
+          image: toymodel
+          ports:
+          - name: http
+            containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          resources:
+            requests:
+              cpu: 500m
+               memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 1Gi
+      strategy:
+         canary:
+           canaryService: toymodel-canary
+           stableService: toymodel-stable
+           trafficRouting:
+             istio:
+               virtualService:
+                 name: toymodel-vsvc
+                 routes:
+                 - primary
+           steps:
+           # Initial canary with analysis
+           - setWeight: 10
+           - pause: {duration: 5m}
+           - analysis:
+               templates:
+               - templateName: toymodel-analysis
+               args:
+               - name: service-name
+                 value: toymodel-canary
+           
+           # Gradual traffic increase with analysis at each step
+           - setWeight: 30
+           - pause: {duration: 5m}
+           - analysis:
+               templates:
+               - templateName: toymodel-analysis
+           
+           - setWeight: 50
+           - pause: {duration: 5m}
+           - analysis:
+               templates:
+               - templateName: toymodel-analysis
+           
+           - setWeight: 80
+           - pause: {duration: 5m}
+           - analysis:
+               templates:
+               - templateName: toymodel-analysis
+           
+           # Final promotion
+           - setWeight: 100
+     
