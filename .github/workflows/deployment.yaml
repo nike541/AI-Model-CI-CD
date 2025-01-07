@@ -59,7 +59,7 @@ jobs:
       - name: Generate image tag
         id: image-tag
         run: |
-          echo "image=ghcr.io/${{ github.repository_owner }}/litmodel:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "image=ghcr.io/${{ github.repository_owner }}/toymodel:${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -78,7 +78,7 @@ jobs:
       - name: Update kustomization
         run: |
           cd k8s/staging
-          kustomize edit set image litmodel=${{ needs.build.outputs.image }}
+          kustomize edit set image toymodel=${{ needs.build.outputs.image }}
 
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
@@ -116,7 +116,7 @@ jobs:
             sleep 30
 
             ERROR_RATE=$(curl -s "http://prometheus.monitoring:9090/api/v1/query" \
-              --data-urlencode 'query=sum(rate(http_server_requests_total{status=~"5.*",service="litmodel-staging"}[5m])) / sum(rate(http_server_requests_total{service="litmodel-staging"}[5m]))' \
+              --data-urlencode 'query=sum(rate(http_server_requests_total{status=~"5.*",service="toymodel-staging"}[5m])) / sum(rate(http_server_requests_total{service="toymodel-staging"}[5m]))' \
               | jq -r '.data.result[0].value[1]')
             if (( $(echo "$ERROR_RATE > 0.01" | bc -l) )); then
               echo "Error rate exceeded threshold (1%): $ERROR_RATE"
@@ -124,7 +124,7 @@ jobs:
             fi
 
             P95_LATENCY=$(curl -s "http://prometheus.monitoring:9090/api/v1/query" \
-              --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service="litmodel-staging"}[5m])) by (le))' \
+              --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service="toymodel-staging"}[5m])) by (le))' \
               | jq -r '.data.result[0].value[1]')
             if (( $(echo "$P95_LATENCY > 0.2" | bc -l) )); then
               echo "P95 latency exceeded threshold (200ms): $P95_LATENCY"
@@ -132,7 +132,7 @@ jobs:
             fi
 
             ACCURACY=$(curl -s "http://prometheus.monitoring:9090/api/v1/query" \
-              --data-urlencode 'query=min(model_prediction_accuracy{service="litmodel-staging"})' \
+              --data-urlencode 'query=min(model_prediction_accuracy{service="toymodel-staging"})' \
               | jq -r '.data.result[0].value[1]')
             if (( $(echo "$ACCURACY < 0.95" | bc -l) )); then
               echo "Model accuracy below threshold (95%): $ACCURACY"
@@ -144,7 +144,7 @@ jobs:
         if: success()
         run: |
           cd k8s/production
-          kustomize edit set image litmodel=${{ needs.build.outputs.image }}
+          kustomize edit set image toymodel=${{ needs.build.outputs.image }}
 
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'

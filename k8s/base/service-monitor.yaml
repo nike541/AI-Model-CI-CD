@@ -1,11 +1,11 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: litmodel
+  name: toymodel
 spec:
   selector:
     matchLabels:
-      app: litmodel
+      app: toymodel
   endpoints:
   - port: http
     path: /metrics

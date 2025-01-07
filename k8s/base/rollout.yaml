@@ -13,7 +13,7 @@ spec:
           app: toymodel
         annotations:
            prometheus.io/scrape: "true"
-           prometheus.io/port: "8000"
+           prometheus.io/port: "8001"
            prometheus.io/path: "/metrics"
       spec:
         containers:
