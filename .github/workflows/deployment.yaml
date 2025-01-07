@@ -1,35 +1,180 @@
-name: Deploy Model
+name: Test Model
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-   build:
-      runs-on: ubuntu-latest
-      outputs:
-        image: ${{ steps.image-tag.outputs.image }}
-      steps:
-        - uses: actions/checkout@v4
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Set Up Docker Buildx
-          uses: docker/login-actions@v3
-          with:
-             registry: ghcr.io
-             username: ${{ github.actor }}
-             password: ${{ secrets.GITHUB_TOKEN }}
-        
-        - name: Generate image tag
-          id: image-tag
-          run: | 
-            echo "image=ghcr.io/${{ github.repository_owner }}/litmodel:${{ github.sha }}" >> $GITHUB_OUTPUT
-        
-        - name: Build and push
-          uses: docker/build-push-action@v5
-          with:
-            push: true
-            tags: ${{ steps.image-tag.outputs.image }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
-            
-        - name:
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install litserve requests numpy pytest
+
+      - name: Run model tests
+        run: |
+          python server.py & sleep 5
+
+      - name: Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+            {
+              "text": "Model tests failed in PR ${{ github.event.pull_request.number }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      image: ${{ steps.image-tag.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tag
+        id: image-tag
+        run: |
+          echo "image=ghcr.io/${{ github.repository_owner }}/litmodel:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ${{ steps.image-tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update kustomization
+        run: |
+          cd k8s/staging
+          kustomize edit set image litmodel=${{ needs.build.outputs.image }}
+
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add .
+          git commit -m "Update staging image to ${{ needs.build.outputs.image }}"
+          git push
+
+      - name: Notify staging deployment
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+            {
+              "text": "🚀 Starting deployment to staging: ${{ needs.build.outputs.image }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  promote-to-production:
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://api.production.company.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for staging validation
+        run: |
+          for i in {1..30}; do
+            sleep 30
+
+            ERROR_RATE=$(curl -s "http://prometheus.monitoring:9090/api/v1/query" \
+              --data-urlencode 'query=sum(rate(http_server_requests_total{status=~"5.*",service="litmodel-staging"}[5m])) / sum(rate(http_server_requests_total{service="litmodel-staging"}[5m]))' \
+              | jq -r '.data.result[0].value[1]')
+            if (( $(echo "$ERROR_RATE > 0.01" | bc -l) )); then
+              echo "Error rate exceeded threshold (1%): $ERROR_RATE"
+              exit 1
+            fi
+
+            P95_LATENCY=$(curl -s "http://prometheus.monitoring:9090/api/v1/query" \
+              --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service="litmodel-staging"}[5m])) by (le))' \
+              | jq -r '.data.result[0].value[1]')
+            if (( $(echo "$P95_LATENCY > 0.2" | bc -l) )); then
+              echo "P95 latency exceeded threshold (200ms): $P95_LATENCY"
+              exit 1
+            fi
+
+            ACCURACY=$(curl -s "http://prometheus.monitoring:9090/api/v1/query" \
+              --data-urlencode 'query=min(model_prediction_accuracy{service="litmodel-staging"})' \
+              | jq -r '.data.result[0].value[1]')
+            if (( $(echo "$ACCURACY < 0.95" | bc -l) )); then
+              echo "Model accuracy below threshold (95%): $ACCURACY"
+              exit 1
+            fi
+          done
+
+      - name: Update production kustomization
+        if: success()
+        run: |
+          cd k8s/production
+          kustomize edit set image litmodel=${{ needs.build.outputs.image }}
+
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add .
+          git commit -m "Update production image to ${{ needs.build.outputs.image }}"
+          git push
+
+      - name: Notify deployment status
+        if: success()
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+            {
+              "text": "✅ Successfully deployed to production: ${{ needs.build.outputs.image }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify deployment failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+            {
+              "text": "❌ Production deployment failed: ${{ needs.build.outputs.image }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          git revert --no-edit HEAD
+          git push
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"🔄 Rolling back production deployment due to failed metrics"}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
