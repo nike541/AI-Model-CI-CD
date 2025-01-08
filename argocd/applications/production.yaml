@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/your-org/your-repo.git
+    repoURL: https://github.com/nike541/AI-Model-CI-CD.git
     targetRevision: HEAD
     path: k8s/production
   destination:
